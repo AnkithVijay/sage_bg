@@ -24,7 +24,23 @@ async function main() {
     console.log('✅ Database setup completed successfully!');
     
     // Create HTTP server
-    const httpServer = createServer();
+    const httpServer = createServer((req, res) => {
+      // Health check endpoint for Docker
+      if (req.url === '/health' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          status: 'healthy',
+          timestamp: new Date().toISOString(),
+          service: 'sage-bg-trading-platform'
+        }));
+        return;
+      }
+      
+      // Default response for other routes
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Not Found' }));
+    });
+    
     const PORT = process.env.PORT || 3000;
     
     // Initialize WebSocket server
@@ -38,6 +54,7 @@ async function main() {
     }, () => {
       console.log(`🌐 Server running on port ${PORT}`);
       console.log(`🔌 WebSocket server ready for connections`);
+      console.log(`🏥 Health check available at: http://localhost:${PORT}/health`);
       console.log(`📱 Network accessible at:`);
       console.log(`   Local: http://localhost:${PORT}`);
       console.log(`   Network: http://192.168.2.187:${PORT}`);
