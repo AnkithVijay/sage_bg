@@ -32,9 +32,16 @@ async function main() {
     console.log('🔌 WebSocket server initialized');
     
     // Start HTTP server
-    httpServer.listen(PORT, () => {
+    httpServer.listen({
+      port: PORT,
+      host: '0.0.0.0'
+    }, () => {
       console.log(`🌐 Server running on port ${PORT}`);
       console.log(`🔌 WebSocket server ready for connections`);
+      console.log(`📱 Network accessible at:`);
+      console.log(`   Local: http://localhost:${PORT}`);
+      console.log(`   Network: http://192.168.2.187:${PORT}`);
+      console.log(`   WebSocket: ws://192.168.2.187:${PORT}`);
     });
     
     // Keep the process running

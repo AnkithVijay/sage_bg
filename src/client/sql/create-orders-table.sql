@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS orders (
     updated_at TIMESTAMP DEFAULT NOW(),
     expires_at TIMESTAMP,
     jupiter_request_id VARCHAR(36),
-    transaction_signature VARCHAR(88),
+    transaction_signature TEXT,
     metadata JSONB
 );
 

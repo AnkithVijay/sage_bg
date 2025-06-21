@@ -70,6 +70,8 @@ class DatabaseClient {
         await this.createOrdersTable();
       } else {
         console.log('Orders table already exists');
+        // Run migration to fix transaction_signature field
+        await this.migrateTransactionField();
       }
 
       // Create positions table if it doesn't exist
@@ -84,6 +86,16 @@ class DatabaseClient {
     } catch (error) {
       console.error('Error initializing database tables:', error);
       throw error;
+    }
+  }
+
+  private async migrateTransactionField(): Promise<void> {
+    try {
+      console.log('Running migration for transaction_signature field...');
+      await this.query('ALTER TABLE orders ALTER COLUMN transaction_signature TYPE TEXT');
+      console.log('Migration completed successfully');
+    } catch (error) {
+      console.log('Migration not needed or already applied:', error);
     }
   }
 

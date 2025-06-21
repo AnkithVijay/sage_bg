@@ -21,16 +21,38 @@ export interface CreateOrderRequest {
 }
 
 export interface CreateOrderResponse {
-  tx: string;
-  requestId: string;
-  orderAccount: string;
-  status: string;
+  order: string;           // Order account address
+  transaction: string;     // Base64 encoded transaction
+  requestId: string;       // Request ID for tracking
 }
 
 export interface JupiterApiError {
   error: string;
   code: number;
   message: string;
+}
+
+export interface ExecuteOrderRequest {
+  signedTransaction: string;
+  requestId: string;
+}
+
+export interface ExecuteOrderResponse {
+  signature: string;
+  status: string;
+  error?: string;
+  code?: number;
+}
+
+export interface CancelOrderRequest {
+  orderAccount: string;
+  maker: string;
+  payer: string;
+}
+
+export interface CancelOrderResponse {
+  transactions: string[];
+  requestId: string;
 }
 
 class JupiterService {
@@ -63,6 +85,60 @@ class JupiterService {
       return result as CreateOrderResponse;
     } catch (error) {
       console.error('Error creating Jupiter order:', error);
+      throw error;
+    }
+  }
+
+  async executeOrder(executeData: ExecuteOrderRequest): Promise<ExecuteOrderResponse> {
+    try {
+      console.log('Executing Jupiter order:', executeData.requestId);
+
+      const response = await fetch(`${this.baseUrl}/trigger/v1/execute`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(executeData),
+      });
+
+      const result = await response.json() as ExecuteOrderResponse | JupiterApiError;
+
+      if (!response.ok) {
+        const errorResult = result as JupiterApiError;
+        throw new Error(`Jupiter API error: ${errorResult.error || errorResult.message || 'Unknown error'}`);
+      }
+
+      console.log('Jupiter order executed successfully:', result);
+      return result as ExecuteOrderResponse;
+    } catch (error) {
+      console.error('Error executing Jupiter order:', error);
+      throw error;
+    }
+  }
+
+  async cancelOrder(cancelData: CancelOrderRequest): Promise<CancelOrderResponse> {
+    try {
+      console.log('Canceling Jupiter order:', cancelData.orderAccount);
+
+      const response = await fetch(`${this.baseUrl}/trigger/v1/cancelOrder`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(cancelData),
+      });
+
+      const result = await response.json() as CancelOrderResponse | JupiterApiError;
+
+      if (!response.ok) {
+        const errorResult = result as JupiterApiError;
+        throw new Error(`Jupiter API error: ${errorResult.error || errorResult.message || 'Unknown error'}`);
+      }
+
+      console.log('Jupiter order canceled successfully:', result);
+      return result as CancelOrderResponse;
+    } catch (error) {
+      console.error('Error canceling Jupiter order:', error);
       throw error;
     }
   }

@@ -2,18 +2,20 @@ import { Server as SocketIOServer } from 'socket.io';
 import { Server as HTTPServer } from 'http';
 import JupiterService, { CreateOrderRequest } from '../services/jupiter-service';
 import DatabaseClient from '../client/database';
+import OrderCalculator, { OrderCalculationParams, CalculatedOrder } from '../services/order-calculator';
 
 export interface SocketOrderRequest {
-  inputMint: string;
-  outputMint: string;
-  maker: string;
-  payer: string;
-  makingAmount: number;
-  currentPrice: number;
-  takeProfitPrice?: number;
-  stopLossPrice?: number;
-  inputDecimals?: number;
-  outputDecimals?: number;
+  inputMint: string;        // Token to sell (e.g., SOL)
+  outputMint: string;       // Token to buy (e.g., USDC)
+  maker: string;           // User wallet address
+  payer: string;           // User wallet address (same as maker)
+  currentPrice: number;    // Current market price
+  buyPrice: number;        // Target buy price for the order (MANDATORY)
+  takeProfitPrice?: number; // Take profit target (OPTIONAL)
+  stopLossPrice?: number;   // Stop loss target (OPTIONAL)
+  amountToSell: number;    // Amount of input token to sell
+  inputDecimals?: number;  // Decimals for input token (default 9)
+  outputDecimals?: number; // Decimals for output token (default 6)
 }
 
 export interface SocketOrderResponse {
@@ -27,6 +29,7 @@ class SocketServer {
   private io: SocketIOServer;
   private jupiterService: JupiterService;
   private dbClient: DatabaseClient;
+  private orderCalculator: OrderCalculator;
 
   constructor(httpServer: HTTPServer) {
     this.io = new SocketIOServer(httpServer, {
@@ -38,6 +41,7 @@ class SocketServer {
 
     this.jupiterService = new JupiterService();
     this.dbClient = DatabaseClient.getInstance();
+    this.orderCalculator = new OrderCalculator();
 
     this.setupEventHandlers();
   }
@@ -83,6 +87,168 @@ class SocketServer {
         }
       });
 
+      // Handle manual order execution
+      socket.on('executeOrder', async (orderId: string) => {
+        try {
+          console.log('Manual order execution requested for:', orderId);
+          
+          const order = await this.dbClient.query(
+            'SELECT * FROM orders WHERE id = $1 AND status = $2',
+            [orderId, 'PENDING']
+          );
+          
+          if (order.rows.length === 0) {
+            socket.emit('orderExecuted', {
+              success: false,
+              error: 'Order not found or not in pending status'
+            });
+            return;
+          }
+          
+          const orderData = order.rows[0];
+          
+          // Execute the order
+          const executeResponse = await this.jupiterService.executeOrder({
+            signedTransaction: orderData.transaction_signature,
+            requestId: orderData.jupiter_request_id
+          });
+          
+          // Update order status
+          await this.dbClient.query(`
+            UPDATE orders 
+            SET status = 'EXECUTED', 
+                updated_at = NOW(),
+                metadata = jsonb_set(
+                  metadata, 
+                  '{manual_execution}', 
+                  $1::jsonb
+                )
+            WHERE id = $2
+          `, [
+            JSON.stringify({
+              executedAt: new Date().toISOString(),
+              jupiterResponse: executeResponse,
+              reason: 'manual_execution'
+            }),
+            orderId
+          ]);
+          
+          socket.emit('orderExecuted', {
+            success: true,
+            data: {
+              orderId,
+              jupiterResponse: executeResponse,
+              executedAt: new Date().toISOString()
+            }
+          });
+          
+        } catch (error) {
+          console.error('Error executing order:', error);
+          socket.emit('orderExecuted', {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error occurred'
+          });
+        }
+      });
+
+      // Handle manual order cancellation
+      socket.on('cancelOrder', async (orderId: string) => {
+        try {
+          console.log('Manual order cancellation requested for:', orderId);
+          
+          // Get order details
+          const order = await this.dbClient.query(
+            'SELECT * FROM orders WHERE id = $1',
+            [orderId]
+          );
+
+          if (order.rows.length === 0) {
+            socket.emit('orderCancelled', {
+              success: false,
+              orderId,
+              error: 'Order not found'
+            });
+            return;
+          }
+
+          const orderData = order.rows[0];
+
+          // Cancel via Jupiter API
+          const cancelResponse = await this.jupiterService.cancelOrder({
+            orderAccount: orderData.order_account,
+            maker: orderData.wallet_address,
+            payer: orderData.wallet_address
+          });
+
+          // Update order status
+          await this.dbClient.query(`
+            UPDATE orders 
+            SET status = 'CANCELLED', 
+                updated_at = NOW(),
+                metadata = jsonb_set(
+                  metadata, 
+                  '{cancellation}', 
+                  $1::jsonb
+                )
+            WHERE id = $2
+          `, [
+            JSON.stringify({
+              cancelledAt: new Date().toISOString(),
+              jupiterResponse: cancelResponse
+            }),
+            orderId
+          ]);
+          
+          socket.emit('orderCancelled', {
+            success: true,
+            orderId,
+            data: { cancelledAt: new Date().toISOString() }
+          });
+          
+        } catch (error) {
+          console.error('Error cancelling order:', error);
+          socket.emit('orderCancelled', {
+            success: false,
+            orderId,
+            error: error instanceof Error ? error.message : 'Unknown error occurred'
+          });
+        }
+      });
+
+      // Handle price check request
+      socket.on('checkPrice', async (tokenMint: string) => {
+        try {
+          // For now, just return a placeholder response
+          // Price checking will be handled by Jupiter's trigger system
+          socket.emit('priceChecked', {
+            success: true,
+            data: {
+              mint: tokenMint,
+              message: 'Price monitoring is handled by Jupiter trigger system'
+            }
+          });
+          
+        } catch (error) {
+          console.error('Error checking price:', error);
+          socket.emit('priceChecked', {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error occurred'
+          });
+        }
+      });
+
+      // Handle monitoring status request
+      socket.on('getMonitoringStatus', () => {
+        // Jupiter handles all monitoring automatically
+        socket.emit('monitoringStatus', {
+          success: true,
+          data: {
+            isMonitoring: true,
+            message: 'Jupiter trigger system handles all price monitoring and execution automatically'
+          }
+        });
+      });
+
       // Handle disconnect
       socket.on('disconnect', () => {
         console.log(`Client disconnected: ${socket.id}`);
@@ -92,81 +258,189 @@ class SocketServer {
 
   private async handleCreateOrder(data: SocketOrderRequest): Promise<SocketOrderResponse> {
     try {
-      // Convert amounts to lamports
-      const inputDecimals = data.inputDecimals || 9;
-      const outputDecimals = data.outputDecimals || 6;
+      console.log('Processing perpetual trading order:', data);
       
-      const makingAmount = this.jupiterService.convertToLamports(data.makingAmount, inputDecimals);
-      
-      // Calculate taking amount based on current price
-      const takingAmount = this.jupiterService.calculateTakingAmount(
-        data.makingAmount,
-        data.currentPrice,
-        data.currentPrice, // For now, use current price as target
-        outputDecimals
-      );
-
-      // Prepare Jupiter API request
-      const jupiterRequest: CreateOrderRequest = {
-        inputMint: data.inputMint,
-        outputMint: data.outputMint,
-        maker: data.maker,
-        payer: data.payer,
-        params: {
-          makingAmount,
-          takingAmount,
-        },
-        computeUnitPrice: "auto",
+      // Use order calculator to get all order calculations
+      const calculationParams: OrderCalculationParams = {
+        currentPrice: data.currentPrice,
+        buyPrice: data.buyPrice,
+        takeProfitPrice: data.takeProfitPrice,
+        stopLossPrice: data.stopLossPrice,
+        amountToSell: data.amountToSell,
+        inputDecimals: data.inputDecimals,
+        outputDecimals: data.outputDecimals
       };
 
-      // Create order via Jupiter API
-      const jupiterResponse = await this.jupiterService.createOrder(jupiterRequest);
+      const calculations = this.orderCalculator.calculateOrders(calculationParams);
+      
+      console.log('Order calculations:', {
+        buyOrder: calculations.buyOrder,
+        takeProfitOrder: calculations.takeProfitOrder,
+        stopLossOrder: calculations.stopLossOrder,
+        summary: calculations.summary
+      });
 
-      // Save order to database
-      const dbResult = await this.dbClient.query(`
-        INSERT INTO orders (
-          wallet_address, order_account, input_mint, output_mint,
-          input_amount, output_amount, entry_price, take_profit_price, stop_loss_price,
-          order_type, status, jupiter_request_id, transaction_signature, metadata
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-        RETURNING id
-      `, [
-        data.maker,
-        jupiterResponse.orderAccount,
-        data.inputMint,
-        data.outputMint,
-        data.makingAmount,
-        this.jupiterService.convertFromLamports(takingAmount, outputDecimals),
-        data.currentPrice,
-        data.takeProfitPrice,
-        data.stopLossPrice,
-        'LIMIT',
-        'PENDING',
-        jupiterResponse.requestId,
-        jupiterResponse.tx,
-        JSON.stringify({
-          jupiterResponse,
-          socketId: 'socket_id_here', // You can track this if needed
-          timestamp: new Date().toISOString()
-        })
-      ]);
+      // Create orders array to track all created orders
+      const createdOrders = [];
 
-      const orderId = dbResult.rows[0].id;
+      // 1. Create the main buy order
+      const buyOrderResult = await this.createJupiterOrder(
+        data,
+        calculations.buyOrder,
+        'BUY'
+      );
+      createdOrders.push(buyOrderResult);
+
+      // 2. Create take profit order if provided
+      if (calculations.takeProfitOrder) {
+        const tpOrderResult = await this.createJupiterOrder(
+          data,
+          calculations.takeProfitOrder,
+          'TAKE_PROFIT'
+        );
+        createdOrders.push(tpOrderResult);
+      }
+
+      // 3. Create stop loss order if provided
+      if (calculations.stopLossOrder) {
+        const slOrderResult = await this.createJupiterOrder(
+          data,
+          calculations.stopLossOrder,
+          'STOP_LOSS'
+        );
+        createdOrders.push(slOrderResult);
+      }
+
+      console.log('All orders created successfully:', createdOrders);
 
       return {
         success: true,
         data: {
-          orderId,
-          jupiterResponse,
-          dbOrder: dbResult.rows[0]
+          orders: createdOrders,
+          calculations: {
+            buyOrder: calculations.buyOrder,
+            takeProfitOrder: calculations.takeProfitOrder,
+            stopLossOrder: calculations.stopLossOrder,
+            summary: calculations.summary
+          },
+          note: 'Jupiter trigger system will automatically execute these orders when conditions are met'
         },
-        orderId
+        orderId: buyOrderResult.orderId // Return the main buy order ID
       };
 
     } catch (error) {
       console.error('Error in handleCreateOrder:', error);
       throw error;
     }
+  }
+
+  /**
+   * Create a single Jupiter order
+   */
+  private async createJupiterOrder(
+    data: SocketOrderRequest,
+    calculatedOrder: CalculatedOrder,
+    orderType: 'BUY' | 'TAKE_PROFIT' | 'STOP_LOSS'
+  ): Promise<{
+    orderId: string;
+    jupiterResponse: any;
+    calculatedOrder: CalculatedOrder;
+    orderType: string;
+  }> {
+    // Determine the correct input and output mints based on order type
+    const isBuyOrder = orderType === 'BUY';
+    const inputMint = isBuyOrder ? data.inputMint : data.outputMint;
+    const outputMint = isBuyOrder ? data.outputMint : data.inputMint;
+    
+    // Determine the correct decimals for input and output tokens
+    const inputDecimals = isBuyOrder ? (data.inputDecimals || 9) : (data.outputDecimals || 6);
+    const outputDecimals = isBuyOrder ? (data.outputDecimals || 6) : (data.inputDecimals || 9);
+
+    // Prepare Jupiter API request
+    const jupiterRequest: CreateOrderRequest = {
+      inputMint,
+      outputMint,
+      maker: data.maker,
+      payer: data.payer,
+      params: {
+        makingAmount: calculatedOrder.makingAmount,
+        takingAmount: calculatedOrder.takingAmount,
+      },
+      computeUnitPrice: "auto",
+    };
+
+    console.log(`Creating ${orderType} order via Jupiter:`, {
+      ...jupiterRequest,
+      orderType,
+      targetPrice: calculatedOrder.targetPrice,
+      description: calculatedOrder.description
+    });
+
+    // Create order via Jupiter API
+    const jupiterResponse = await this.jupiterService.createOrder(jupiterRequest);
+
+    // Calculate the correct amounts for database storage
+    const inputAmount = this.convertFromLamports(calculatedOrder.makingAmount, inputDecimals);
+    const outputAmount = this.convertFromLamports(calculatedOrder.takingAmount, outputDecimals);
+
+    // Save order to database
+    const dbResult = await this.dbClient.query(`
+      INSERT INTO orders (
+        wallet_address, order_account, input_mint, output_mint,
+        input_amount, output_amount, entry_price, take_profit_price, stop_loss_price,
+        order_type, status, jupiter_request_id, transaction_signature, metadata
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      RETURNING id
+    `, [
+      data.maker,
+      jupiterResponse.order,
+      inputMint,
+      outputMint,
+      inputAmount,
+      outputAmount,
+      data.currentPrice,
+      data.takeProfitPrice,
+      data.stopLossPrice,
+      orderType,
+      'PENDING',
+      jupiterResponse.requestId,
+      jupiterResponse.transaction,
+      JSON.stringify({
+        jupiterResponse,
+        calculatedOrder,
+        orderType,
+        targetPrice: calculatedOrder.targetPrice,
+        inputDecimals,
+        outputDecimals,
+        timestamp: new Date().toISOString(),
+        note: `Jupiter trigger system will automatically execute this ${orderType.toLowerCase()} order when price reaches ${calculatedOrder.targetPrice}`
+      })
+    ]);
+
+    const orderId = dbResult.rows[0].id;
+
+    console.log(`${orderType} order created successfully:`, {
+      orderId,
+      jupiterOrderAccount: jupiterResponse.order,
+      targetPrice: calculatedOrder.targetPrice,
+      inputAmount,
+      outputAmount,
+      description: calculatedOrder.description
+    });
+
+    return {
+      orderId,
+      jupiterResponse,
+      calculatedOrder,
+      orderType
+    };
+  }
+
+  /**
+   * Helper method to convert lamports back to regular amounts
+   */
+  private convertFromLamports(lamports: string, decimals: number): number {
+    return parseInt(lamports) / Math.pow(10, decimals);
   }
 
   public getIO(): SocketIOServer {

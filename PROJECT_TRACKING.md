@@ -2,28 +2,61 @@
 ## Project Tracking & Documentation
 
 ### Project Overview
-Sage BG is a backend service that adds perpetual trading capabilities to a non-perpetual Solana trading platform using Jupiter's Trigger API. The system manages limit orders, take profit, and stop loss functionality through automated order execution and cancellation.
+Sage BG is a backend service that adds perpetual trading capabilities to a non-perpetual Solana trading platform using Jupiter's Trigger API. The system creates limit orders and lets Jupiter's trigger system handle all price monitoring and automatic execution.
 
 ### Architecture Overview
 ```
 Frontend (UI) → Sage BG Backend → Jupiter Trigger API → Solana Network
      ↓              ↓                    ↓
-  Create Order → Store in DB → Execute/Cancel Orders
+  Create Order → Store in DB → Jupiter Auto-Executes
 ```
 
 ### Core Features
-- **Order Management**: Execute and cancel trigger orders via Jupiter API
-- **Position Tracking**: Monitor entry prices, take profit, and stop loss levels
-- **Database Integration**: Store order information from frontend
-- **Automated Execution**: Handle order execution when conditions are met
+- **Order Creation**: Create limit orders via Jupiter API with buy price targets
+- **Database Tracking**: Store order information and track status
+- **Automatic Execution**: Jupiter's trigger system handles all price monitoring and execution
 - **Order Cancellation**: Cancel orders when needed
+- **Status Tracking**: Monitor order status and execution results
 
 ### Technology Stack
 - **Backend**: Node.js + TypeScript
 - **Database**: PostgreSQL
 - **API**: Jupiter Trigger API (Lite endpoints)
 - **Blockchain**: Solana (Helius RPC)
+- **Real-time**: WebSocket communication
 - **Authentication**: TBD
+
+---
+
+## Simplified Flow
+
+### Order Creation Process
+1. **Frontend sends order request** via WebSocket with:
+   - `buyPrice` (MANDATORY) - Target price for the order
+   - `takeProfitPrice` (OPTIONAL) - Take profit target
+   - `stopLossPrice` (OPTIONAL) - Stop loss target
+   - Other trading parameters
+
+2. **Backend creates Jupiter order**:
+   - Calculates amounts based on buy price
+   - Sends order to Jupiter Trigger API
+   - Stores order in database with all parameters
+
+3. **Jupiter handles everything else**:
+   - Monitors prices automatically
+   - Executes order when buy price is reached
+   - Updates order status when executed
+
+4. **Backend tracks status**:
+   - Can query order status
+   - Can cancel orders if needed
+   - Stores execution results
+
+### Key Benefits
+- **Simplified Architecture**: No need for manual price monitoring
+- **Reliable Execution**: Jupiter's proven trigger system
+- **Automatic Handling**: No manual intervention required
+- **Cost Effective**: Leverages Jupiter's infrastructure
 
 ---
 
@@ -32,15 +65,15 @@ Frontend (UI) → Sage BG Backend → Jupiter Trigger API → Solana Network
 ### Jupiter Trigger API Endpoints
 Based on the [Jupiter Trigger API documentation](https://dev.jup.ag/docs/trigger-api/):
 
-#### 1. Execute Order
-- **Endpoint**: `https://lite-api.jup.ag/trigger/v1/execute`
+#### 1. Create Order
+- **Endpoint**: `https://lite-api.jup.ag/trigger/v1/createOrder`
 - **Method**: POST
-- **Purpose**: Execute trigger orders when conditions are met
+- **Purpose**: Create trigger orders with price targets
 - **Key Features**:
+  - Automatic price monitoring
   - Transaction signing and execution
   - Priority fee handling
   - RPC connection management
-  - Error handling and status reporting
 
 #### 2. Cancel Order
 - **Endpoint**: `https://lite-api.jup.ag/trigger/v1/cancelOrder`
@@ -84,147 +117,86 @@ CREATE TABLE orders (
 );
 ```
 
-### Positions Table
-```sql
-CREATE TABLE positions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    wallet_address VARCHAR(44) NOT NULL,
-    order_id UUID REFERENCES orders(id),
-    entry_price DECIMAL NOT NULL,
-    current_price DECIMAL,
-    take_profit_price DECIMAL,
-    stop_loss_price DECIMAL,
-    position_size DECIMAL NOT NULL,
-    unrealized_pnl DECIMAL,
-    realized_pnl DECIMAL,
-    status VARCHAR(20) NOT NULL, -- 'OPEN', 'CLOSED', 'LIQUIDATED'
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW(),
-    closed_at TIMESTAMP
-);
-```
-
 ---
 
 ## Core Service Modules
 
-### 1. Order Service
+### 1. Jupiter Service
 **Responsibilities**:
-- Execute trigger orders via Jupiter API
+- Create trigger orders via Jupiter API
 - Cancel orders when needed
-- Monitor order status
-- Handle transaction signing and submission
+- Handle API responses and errors
+- Manage transaction signing
 
 **Key Methods**:
 ```typescript
-interface OrderService {
-  executeOrder(orderData: ExecuteOrderRequest): Promise<ExecuteOrderResponse>;
+interface JupiterService {
+  createOrder(orderData: CreateOrderRequest): Promise<CreateOrderResponse>;
   cancelOrder(cancelData: CancelOrderRequest): Promise<CancelOrderResponse>;
-  cancelMultipleOrders(orders: string[]): Promise<CancelOrdersResponse>;
   getOrderStatus(orderAccount: string): Promise<OrderStatus>;
 }
 ```
 
-### 2. Position Service
+### 2. Database Service
 **Responsibilities**:
-- Track entry prices and current positions
-- Calculate take profit and stop loss levels
-- Monitor price movements
-- Execute TP/SL orders automatically
-
-**Key Methods**:
-```typescript
-interface PositionService {
-  createPosition(positionData: CreatePositionRequest): Promise<Position>;
-  updatePosition(positionId: string, updates: PositionUpdates): Promise<Position>;
-  checkTakeProfit(positionId: string): Promise<boolean>;
-  checkStopLoss(positionId: string): Promise<boolean>;
-  closePosition(positionId: string): Promise<Position>;
-}
-```
-
-### 3. Price Monitoring Service
-**Responsibilities**:
-- Monitor token prices in real-time
-- Trigger take profit/stop loss orders
-- Update position P&L calculations
-- Handle price feed integration
-
-### 4. Database Service
-**Responsibilities**:
-- CRUD operations for orders and positions
+- CRUD operations for orders
 - Data validation and sanitization
 - Transaction management
 - Query optimization
 
----
-
-## API Endpoints Design
-
-### Order Management
-```
-POST /api/orders/execute
-POST /api/orders/cancel
-POST /api/orders/cancel-multiple
-GET /api/orders/:walletAddress
-GET /api/orders/status/:orderAccount
-```
-
-### Position Management
-```
-POST /api/positions
-GET /api/positions/:walletAddress
-PUT /api/positions/:positionId
-DELETE /api/positions/:positionId
-GET /api/positions/:positionId/pnl
-```
-
-### Price Monitoring
-```
-GET /api/prices/:tokenMint
-GET /api/prices/stream/:tokenMint
-POST /api/prices/check-tp-sl
-```
+### 3. WebSocket Service
+**Responsibilities**:
+- Real-time communication with frontend
+- Order creation requests
+- Order cancellation requests
+- Status updates
 
 ---
 
-## Implementation Phases
+## WebSocket Events
 
-### Phase 1: Foundation Setup
+### Client to Server
+- `createOrder` - Create a new trading order
+- `cancelOrder` - Cancel an existing order
+- `getOrderStatus` - Get status of an order
+- `checkPrice` - Check current price (placeholder)
+- `getMonitoringStatus` - Get monitoring status (placeholder)
+
+### Server to Client
+- `orderCreated` - Order creation response
+- `orderCancelled` - Order cancellation response
+- `orderStatus` - Order status response
+- `priceChecked` - Price check response
+- `monitoringStatus` - Monitoring status response
+
+---
+
+## Implementation Status
+
+### ✅ Completed
 - [x] Node.js + TypeScript project setup
-- [ ] Database setup and schema creation
-- [ ] Jupiter API integration setup
-- [ ] Basic error handling and logging
-- [ ] Environment configuration
+- [x] Database setup and schema creation
+- [x] Jupiter API integration setup
+- [x] WebSocket server implementation
+- [x] Order creation via Jupiter API
+- [x] Order cancellation via Jupiter API
+- [x] Database integration for order tracking
+- [x] Basic error handling and logging
+- [x] Environment configuration
+- [x] Order calculator service with robust pricing calculations
+- [x] Take profit order creation (when takeProfitPrice is provided)
+- [x] Stop loss order creation (when stopLossPrice is provided)
+- [x] Multiple order creation in single request
+- [x] Risk/reward ratio calculations
+- [x] TypeScript test client
 
-### Phase 2: Core API Integration
-- [ ] Implement Execute Order functionality
-- [ ] Implement Cancel Order functionality
-- [ ] Implement Get Trigger Orders
-- [ ] Transaction signing and submission
-- [ ] API response handling and validation
+### 🔄 Current Focus
+- [ ] Order status monitoring and updates
+- [ ] Frontend integration testing
+- [ ] Error handling improvements
+- [ ] Performance optimization
 
-### Phase 3: Database Integration
-- [ ] Database connection setup
-- [ ] Order table implementation
-- [ ] Position table implementation
-- [ ] CRUD operations for orders and positions
-- [ ] Data validation and sanitization
-
-### Phase 4: Position Management
-- [ ] Position creation and tracking
-- [ ] Entry price management
-- [ ] Take profit calculation and monitoring
-- [ ] Stop loss calculation and monitoring
-- [ ] P&L calculations
-
-### Phase 5: Price Monitoring
-- [ ] Real-time price feed integration
-- [ ] Automated TP/SL order execution
-- [ ] Price change monitoring
-- [ ] Position updates based on price movements
-
-### Phase 6: Advanced Features
+### 📋 Future Enhancements
 - [ ] Order batching and optimization
 - [ ] Error recovery and retry mechanisms
 - [ ] Performance monitoring and optimization
@@ -294,7 +266,7 @@ API_RATE_LIMIT=100
 - Jupiter API integration testing
 
 ### Performance Tests
-- Load testing for order execution
+- Load testing for order creation
 - Database performance testing
 - API response time testing
 
@@ -310,7 +282,7 @@ API_RATE_LIMIT=100
 
 ### Transaction Security
 - Transaction signing verification
-- Order validation before execution
+- Order validation before creation
 - Duplicate order prevention
 - Authorization checks
 
@@ -325,15 +297,15 @@ API_RATE_LIMIT=100
 ## Monitoring and Logging
 
 ### Application Monitoring
-- Order execution metrics
+- Order creation metrics
 - API response times
 - Error rates and types
 - Database performance metrics
 
 ### Business Metrics
-- Total orders executed
+- Total orders created
 - Success/failure rates
-- P&L tracking
+- Execution tracking
 - User activity metrics
 
 ### Logging Strategy
@@ -370,27 +342,26 @@ API_RATE_LIMIT=100
 
 1. **Authentication**: How will users authenticate with the backend?
 2. **Rate Limiting**: What are the expected order volumes and rate limits?
-3. **Price Feeds**: Which price feed service should we integrate with?
-4. **Order Types**: What specific order types need to be supported beyond basic TP/SL?
-5. **Multi-wallet Support**: Should the system support multiple wallets per user?
-6. **Real-time Updates**: Do you need WebSocket support for real-time updates?
-7. **Backup Strategy**: What are the requirements for data backup and recovery?
+3. **Take Profit/Stop Loss**: Should these be implemented as separate orders or integrated into the main order?
+4. **Multi-wallet Support**: Should the system support multiple wallets per user?
+5. **Real-time Updates**: Do you need WebSocket support for real-time updates?
+6. **Backup Strategy**: What are the requirements for data backup and recovery?
 
 ---
 
 ## Next Steps
 
-1. **Database Setup**: Configure PostgreSQL connection using POSTGRESS_URL
-2. **Jupiter API Integration**: Implement basic API integration with lite endpoints
-3. **Order Service**: Build the core order execution and cancellation logic
-4. **Database Schema**: Create and test the database schema
-5. **Position Tracking**: Implement position management functionality
+1. **Take Profit Orders**: Implement take profit order creation when takeProfitPrice is provided
+2. **Stop Loss Orders**: Implement stop loss order creation when stopLossPrice is provided
+3. **Order Status Updates**: Implement status monitoring and updates
+4. **Frontend Integration**: Test with actual frontend application
+5. **Error Handling**: Enhance error handling and recovery mechanisms
 
 ---
 
 ## References
 
 - [Jupiter Trigger API Documentation](https://dev.jup.ag/docs/trigger-api/)
-- [Execute Order Documentation](https://dev.jup.ag/docs/trigger-api/execute-order)
+- [Create Order Documentation](https://dev.jup.ag/docs/trigger-api/create-order)
 - [Cancel Order Documentation](https://dev.jup.ag/docs/trigger-api/cancel-order)
 - [Solana Web3.js Documentation](https://docs.solana.com/developing/clients/javascript-api) 
