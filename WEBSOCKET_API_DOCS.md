@@ -301,6 +301,77 @@ socket.on('monitoringStatus', (response) => {
 
 ---
 
+### **6. Get AI Trading Suggestions**
+
+**Event:** `getTradingSuggestions`
+
+**Description:** Get AI-powered trading suggestions based on current market data and user preferences.
+
+**Request:**
+```javascript
+const suggestionData = {
+  tokenMint: "So11111111111111111111111111111111111111112", // SOL
+  timeframe: "4h", // 1min, 5min, 15min, 1h, 4h, 1d
+  riskLevel: "moderate", // conservative, moderate, aggressive
+  userBalance: 10, // User's available balance in SOL
+  preferences: {
+    maxRiskPercentage: 5, // Max 5% risk per trade
+    preferredTimeframe: "4h"
+  }
+};
+
+socket.emit('getTradingSuggestions', suggestionData);
+```
+
+**Response:**
+```javascript
+socket.on('tradingSuggestions', (response) => {
+  if (response.success) {
+    console.log('AI suggestions:', response.data);
+  } else {
+    console.error('AI suggestions failed:', response.error);
+  }
+});
+```
+
+**Response Structure:**
+```javascript
+{
+  success: true,
+  data: {
+    currentPrice: 100.50,
+    suggestions: [
+      {
+        confidence: 0.85,
+        action: "BUY",
+        entryPrice: 100.50,
+        takeProfitPrice: 110.55,
+        stopLossPrice: 95.48,
+        positionSize: 0.5,
+        riskRewardRatio: 2.1,
+        reasoning: "Strong bullish momentum with oversold RSI...",
+        timeframe: "4h",
+        riskLevel: "moderate"
+      }
+    ],
+    marketAnalysis: {
+      trend: "BULLISH",
+      strength: 0.75,
+      support: 95.00,
+      resistance: 105.00,
+      volatility: "MEDIUM"
+    },
+    technicalIndicators: {
+      priceChange: 2.3,
+      confidence: "high",
+      liquidity: "medium"
+    }
+  }
+}
+```
+
+---
+
 ## 📋 Data Types
 
 ### **Order Types:**

@@ -3,6 +3,7 @@ import { Server as HTTPServer } from 'http';
 import JupiterService, { CreateOrderRequest } from '../services/jupiter-service';
 import DatabaseClient from '../client/database';
 import OrderCalculator, { OrderCalculationParams, CalculatedOrder } from '../services/order-calculator';
+import AISuggestionService, { SuggestionRequest } from '../services/ai-suggestion-service';
 
 export interface SocketOrderRequest {
   inputMint: string;        // Token to sell (e.g., SOL)
@@ -30,6 +31,7 @@ class SocketServer {
   private jupiterService: JupiterService;
   private dbClient: DatabaseClient;
   private orderCalculator: OrderCalculator;
+  private aiSuggestionService: AISuggestionService;
 
   constructor(httpServer: HTTPServer) {
     this.io = new SocketIOServer(httpServer, {
@@ -42,6 +44,7 @@ class SocketServer {
     this.jupiterService = new JupiterService();
     this.dbClient = DatabaseClient.getInstance();
     this.orderCalculator = new OrderCalculator();
+    this.aiSuggestionService = new AISuggestionService();
 
     this.setupEventHandlers();
   }
@@ -183,6 +186,26 @@ class SocketServer {
             message: 'Jupiter trigger system handles all price monitoring and execution automatically'
           }
         });
+      });
+
+      // Handle AI trading suggestions request
+      socket.on('getTradingSuggestions', async (data: SuggestionRequest) => {
+        try {
+          console.log('AI trading suggestions requested:', data);
+          
+          const suggestions = await this.aiSuggestionService.generateTradingSuggestions(data);
+          
+          socket.emit('tradingSuggestions', {
+            success: true,
+            data: suggestions
+          });
+        } catch (error) {
+          console.error('Error generating trading suggestions:', error);
+          socket.emit('tradingSuggestions', {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error occurred'
+          });
+        }
       });
 
       // Handle disconnect
