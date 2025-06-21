@@ -89,6 +89,11 @@ class JupiterService {
     }
   }
 
+  /**
+   * Execute a Jupiter order (for frontend use)
+   * Note: This method is provided for reference but orders should be executed by the frontend
+   * after signing the transaction with the user's wallet
+   */
   async executeOrder(executeData: ExecuteOrderRequest): Promise<ExecuteOrderResponse> {
     try {
       console.log('Executing Jupiter order:', executeData.requestId);

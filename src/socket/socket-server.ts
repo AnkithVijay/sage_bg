@@ -87,74 +87,10 @@ class SocketServer {
         }
       });
 
-      // Handle manual order execution
-      socket.on('executeOrder', async (orderId: string) => {
-        try {
-          console.log('Manual order execution requested for:', orderId);
-          
-          const order = await this.dbClient.query(
-            'SELECT * FROM orders WHERE id = $1 AND status = $2',
-            [orderId, 'PENDING']
-          );
-          
-          if (order.rows.length === 0) {
-            socket.emit('orderExecuted', {
-              success: false,
-              error: 'Order not found or not in pending status'
-            });
-            return;
-          }
-          
-          const orderData = order.rows[0];
-          
-          // Execute the order
-          const executeResponse = await this.jupiterService.executeOrder({
-            signedTransaction: orderData.transaction_signature,
-            requestId: orderData.jupiter_request_id
-          });
-          
-          // Update order status
-          await this.dbClient.query(`
-            UPDATE orders 
-            SET status = 'EXECUTED', 
-                updated_at = NOW(),
-                metadata = jsonb_set(
-                  metadata, 
-                  '{manual_execution}', 
-                  $1::jsonb
-                )
-            WHERE id = $2
-          `, [
-            JSON.stringify({
-              executedAt: new Date().toISOString(),
-              jupiterResponse: executeResponse,
-              reason: 'manual_execution'
-            }),
-            orderId
-          ]);
-          
-          socket.emit('orderExecuted', {
-            success: true,
-            data: {
-              orderId,
-              jupiterResponse: executeResponse,
-              executedAt: new Date().toISOString()
-            }
-          });
-          
-        } catch (error) {
-          console.error('Error executing order:', error);
-          socket.emit('orderExecuted', {
-            success: false,
-            error: error instanceof Error ? error.message : 'Unknown error occurred'
-          });
-        }
-      });
-
-      // Handle manual order cancellation
+      // Handle order cancellation
       socket.on('cancelOrder', async (orderId: string) => {
         try {
-          console.log('Manual order cancellation requested for:', orderId);
+          console.log('Order cancellation requested for:', orderId);
           
           // Get order details
           const order = await this.dbClient.query(
