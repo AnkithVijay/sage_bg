@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && npm run copy-sql",
+    "copy-sql": "cp -r src/client/sql dist/client/",
     "start": "node dist/index.js",
     "dev": "nodemon src/index.ts",
     "watch": "tsc --watch",
