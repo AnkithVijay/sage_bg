@@ -4,14 +4,15 @@
 
 ### **Server URLs:**
 - **Local Development**: `ws://localhost:3000` or `http://localhost:3000`
-- **Network Access**: `ws://192.168.2.187:3000` or `http://192.168.2.187:3000`
+- **Network Access**: `ws://0.0.0.0:3000` or `http://0.0.0.0:3000` (replace with your actual IP)
+- **Docker**: `ws://localhost:3000` or `http://localhost:3000`
 
 ### **Connection Example:**
 ```javascript
 // Using socket.io-client
 import io from 'socket.io-client';
 
-const socket = io('http://192.168.2.187:3000');
+const socket = io('http://localhost:3000');
 
 socket.on('connect', () => {
   console.log('Connected to Sage BG server');
@@ -105,7 +106,8 @@ socket.on('orderCreated', (response) => {
         totalExpectedOutput: 95,
         riskRewardRatio: 1.5
       }
-    }
+    },
+    note: "Jupiter trigger system will automatically execute these orders when conditions are met"
   },
   orderId: "main_order_id"
 }
@@ -397,7 +399,7 @@ socket.emit('getOrders', {
 // Get orders for specific wallet with status filter
 socket.emit('getOrders', { 
   walletAddress: "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
-  status: "ACTIVE",
+  status: "PENDING",
   limit: 10 
 });
 ```
@@ -515,14 +517,13 @@ socket.on('orderDetails', (response) => {
 ```javascript
 socket.emit('updateOrderStatus', { 
   orderId: "uuid-of-the-order",
-  status: "ACTIVE",
+  status: "EXECUTED",
   transactionSignature: "optional-transaction-signature" 
 });
 ```
 
 **Available Statuses:**
-- `PENDING`: Order created, waiting for execution
-- `ACTIVE`: Order is active and being monitored
+- `PENDING`: Order created, waiting for execution (default)
 - `EXECUTED`: Order has been executed
 - `CANCELLED`: Order has been cancelled
 - `EXPIRED`: Order has expired
@@ -544,7 +545,7 @@ socket.on('orderStatusUpdated', (response) => {
   success: true,
   data: {
     orderId: "uuid-here",
-    status: "ACTIVE",
+    status: "EXECUTED",
     updatedAt: "2024-01-15T10:35:00Z"
   }
 }
@@ -560,7 +561,7 @@ socket.on('orderStatusUpdated', (response) => {
 - `STOP_LOSS` - Stop loss sell order
 
 ### **Order Status:**
-- `PENDING` - Order is waiting for execution
+- `PENDING` - Order is waiting for execution (default)
 - `EXECUTED` - Order has been executed
 - `CANCELLED` - Order has been cancelled
 - `EXPIRED` - Order has expired
@@ -576,7 +577,7 @@ socket.on('orderStatusUpdated', (response) => {
 ```javascript
 import io from 'socket.io-client';
 
-const socket = io('http://192.168.2.187:3000');
+const socket = io('http://localhost:3000');
 
 // Connect to server
 socket.on('connect', () => {
@@ -691,6 +692,7 @@ socket.on('disconnect', () => {
 - Ensure both devices are on the same network
 - Check firewall settings if connection fails
 - IP address may change if you reconnect to WiFi
+- Use `ifconfig` (macOS/Linux) or `ipconfig` (Windows) to find your IP
 
 ### **Jupiter Integration:**
 - Backend creates orders and provides transaction data
@@ -704,6 +706,10 @@ socket.on('disconnect', () => {
 - Implement retry logic for failed requests
 - Handle transaction signing failures
 
+### **Health Check:**
+- Server provides a health check endpoint at `http://localhost:3000/health`
+- Useful for Docker health checks and monitoring
+
 ---
 
 ## 🧪 Testing
@@ -713,6 +719,9 @@ You can test the WebSocket API using the provided test client:
 ```bash
 # Run the test client
 npx ts-node test-socket-client.ts
+
+# Run end-to-end test
+npx ts-node test-e2e-ai-order.ts
 ```
 
 This will create sample orders and demonstrate all the functionality.
