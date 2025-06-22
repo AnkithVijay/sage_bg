@@ -208,6 +208,90 @@ class SocketServer {
         }
       });
 
+      // Handle get orders request
+      socket.on('getOrders', async (data: { walletAddress?: string; status?: string; limit?: number }) => {
+        try {
+          console.log('Get orders requested:', data);
+          
+          let orders;
+          if (data.walletAddress) {
+            orders = await this.dbClient.getOrders(data.walletAddress, data.status);
+          } else {
+            orders = await this.dbClient.getAllOrders(data.status, data.limit);
+          }
+          
+          socket.emit('ordersList', {
+            success: true,
+            data: {
+              orders,
+              total: orders.length,
+              filters: {
+                walletAddress: data.walletAddress,
+                status: data.status,
+                limit: data.limit
+              }
+            }
+          });
+        } catch (error) {
+          console.error('Error fetching orders:', error);
+          socket.emit('ordersList', {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error occurred'
+          });
+        }
+      });
+
+      // Handle get order by ID request
+      socket.on('getOrderById', async (data: { orderId: string }) => {
+        try {
+          console.log('Get order by ID requested:', data.orderId);
+          
+          const order = await this.dbClient.getOrderById(data.orderId);
+          
+          if (order) {
+            socket.emit('orderDetails', {
+              success: true,
+              data: order
+            });
+          } else {
+            socket.emit('orderDetails', {
+              success: false,
+              error: 'Order not found'
+            });
+          }
+        } catch (error) {
+          console.error('Error fetching order by ID:', error);
+          socket.emit('orderDetails', {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error occurred'
+          });
+        }
+      });
+
+      // Handle update order status request
+      socket.on('updateOrderStatus', async (data: { orderId: string; status: string; transactionSignature?: string }) => {
+        try {
+          console.log('Update order status requested:', data);
+          
+          await this.dbClient.updateOrderStatus(data.orderId, data.status, data.transactionSignature);
+          
+          socket.emit('orderStatusUpdated', {
+            success: true,
+            data: {
+              orderId: data.orderId,
+              status: data.status,
+              updatedAt: new Date().toISOString()
+            }
+          });
+        } catch (error) {
+          console.error('Error updating order status:', error);
+          socket.emit('orderStatusUpdated', {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error occurred'
+          });
+        }
+      });
+
       // Handle disconnect
       socket.on('disconnect', () => {
         console.log(`Client disconnected: ${socket.id}`);

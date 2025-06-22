@@ -37,7 +37,7 @@ class OrderCalculator {
    * Convert amount to lamports (smallest unit)
    */
   private convertToLamports(amount: number, decimals: number): string {
-    return (amount * Math.pow(10, decimals)).toString();
+    return Math.floor(amount * Math.pow(10, decimals)).toString();
   }
 
   /**

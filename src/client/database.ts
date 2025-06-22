@@ -129,6 +129,163 @@ class DatabaseClient {
       return false;
     }
   }
+
+  /**
+   * Get all orders for a wallet address
+   */
+  public async getOrders(walletAddress: string, status?: string): Promise<any[]> {
+    try {
+      let query = `
+        SELECT 
+          id,
+          wallet_address,
+          order_account,
+          input_mint,
+          output_mint,
+          input_amount,
+          output_amount,
+          entry_price,
+          take_profit_price,
+          stop_loss_price,
+          order_type,
+          status,
+          created_at,
+          updated_at,
+          expires_at,
+          jupiter_request_id,
+          transaction_signature,
+          metadata
+        FROM orders 
+        WHERE wallet_address = $1
+      `;
+      
+      const params: any[] = [walletAddress];
+      
+      if (status) {
+        query += ' AND status = $2';
+        params.push(status);
+      }
+      
+      query += ' ORDER BY created_at DESC';
+      
+      const result = await this.query(query, params);
+      return result.rows;
+    } catch (error) {
+      console.error('Error fetching orders:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get all orders with optional status filter
+   */
+  public async getAllOrders(status?: string, limit: number = 100): Promise<any[]> {
+    try {
+      let query = `
+        SELECT 
+          id,
+          wallet_address,
+          order_account,
+          input_mint,
+          output_mint,
+          input_amount,
+          output_amount,
+          entry_price,
+          take_profit_price,
+          stop_loss_price,
+          order_type,
+          status,
+          created_at,
+          updated_at,
+          expires_at,
+          jupiter_request_id,
+          transaction_signature,
+          metadata
+        FROM orders 
+      `;
+      
+      const params: any[] = [];
+      
+      if (status) {
+        query += ' WHERE status = $1';
+        params.push(status);
+      }
+      
+      query += ' ORDER BY created_at DESC LIMIT $' + (params.length + 1);
+      params.push(limit);
+      
+      const result = await this.query(query, params);
+      return result.rows;
+    } catch (error) {
+      console.error('Error fetching all orders:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update order status
+   */
+  public async updateOrderStatus(orderId: string, status: string, transactionSignature?: string): Promise<void> {
+    try {
+      let query = `
+        UPDATE orders 
+        SET status = $1, updated_at = NOW()
+      `;
+      
+      const params: any[] = [status];
+      
+      if (transactionSignature) {
+        query += ', transaction_signature = $2';
+        params.push(transactionSignature);
+      }
+      
+      query += ' WHERE id = $' + (params.length + 1);
+      params.push(orderId);
+      
+      await this.query(query, params);
+      console.log(`Order ${orderId} status updated to ${status}`);
+    } catch (error) {
+      console.error('Error updating order status:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get order by ID
+   */
+  public async getOrderById(orderId: string): Promise<any> {
+    try {
+      const query = `
+        SELECT 
+          id,
+          wallet_address,
+          order_account,
+          input_mint,
+          output_mint,
+          input_amount,
+          output_amount,
+          entry_price,
+          take_profit_price,
+          stop_loss_price,
+          order_type,
+          status,
+          created_at,
+          updated_at,
+          expires_at,
+          jupiter_request_id,
+          transaction_signature,
+          metadata
+        FROM orders 
+        WHERE id = $1
+      `;
+      
+      const result = await this.query(query, [orderId]);
+      return result.rows[0] || null;
+    } catch (error) {
+      console.error('Error fetching order by ID:', error);
+      throw error;
+    }
+  }
 }
 
 export default DatabaseClient; 

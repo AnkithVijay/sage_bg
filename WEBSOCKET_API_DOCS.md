@@ -372,6 +372,186 @@ socket.on('tradingSuggestions', (response) => {
 
 ---
 
+### **7. Get Orders List**
+
+**Event:** `getOrders`
+
+**Description:** Get a list of orders with optional filtering by wallet address and status.
+
+**Request:**
+```javascript
+// Get all orders
+socket.emit('getOrders', {});
+
+// Get orders for specific wallet
+socket.emit('getOrders', { 
+  walletAddress: "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM" 
+});
+
+// Get orders with status filter
+socket.emit('getOrders', { 
+  status: "PENDING",
+  limit: 50 
+});
+
+// Get orders for specific wallet with status filter
+socket.emit('getOrders', { 
+  walletAddress: "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+  status: "ACTIVE",
+  limit: 10 
+});
+```
+
+**Response:**
+```javascript
+socket.on('ordersList', (response) => {
+  if (response.success) {
+    console.log('Orders:', response.data.orders);
+  } else {
+    console.error('Failed to get orders:', response.error);
+  }
+});
+```
+
+**Response Structure:**
+```javascript
+{
+  success: true,
+  data: {
+    orders: [
+      {
+        id: "uuid-here",
+        wallet_address: "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+        order_account: "order-account-here",
+        input_mint: "So11111111111111111111111111111111111111112",
+        output_mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        input_amount: "1.5",
+        output_amount: "150.75",
+        entry_price: "100.50",
+        take_profit_price: "110.55",
+        stop_loss_price: "95.48",
+        order_type: "BUY",
+        status: "PENDING",
+        created_at: "2024-01-15T10:30:00Z",
+        updated_at: "2024-01-15T10:30:00Z",
+        expires_at: "2024-01-16T10:30:00Z",
+        jupiter_request_id: "req-123",
+        transaction_signature: "tx-signature-here",
+        metadata: { /* order metadata */ }
+      }
+    ],
+    total: 1,
+    filters: {
+      walletAddress: "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+      status: "PENDING",
+      limit: 10
+    }
+  }
+}
+```
+
+---
+
+### **8. Get Order by ID**
+
+**Event:** `getOrderById`
+
+**Description:** Get detailed information about a specific order by its ID.
+
+**Request:**
+```javascript
+socket.emit('getOrderById', { 
+  orderId: "uuid-of-the-order" 
+});
+```
+
+**Response:**
+```javascript
+socket.on('orderDetails', (response) => {
+  if (response.success) {
+    console.log('Order details:', response.data);
+  } else {
+    console.error('Failed to get order details:', response.error);
+  }
+});
+```
+
+**Response Structure:**
+```javascript
+{
+  success: true,
+  data: {
+    id: "uuid-here",
+    wallet_address: "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+    order_account: "order-account-here",
+    input_mint: "So11111111111111111111111111111111111111112",
+    output_mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    input_amount: "1.5",
+    output_amount: "150.75",
+    entry_price: "100.50",
+    take_profit_price: "110.55",
+    stop_loss_price: "95.48",
+    order_type: "BUY",
+    status: "PENDING",
+    created_at: "2024-01-15T10:30:00Z",
+    updated_at: "2024-01-15T10:30:00Z",
+    expires_at: "2024-01-16T10:30:00Z",
+    jupiter_request_id: "req-123",
+    transaction_signature: "tx-signature-here",
+    metadata: { /* order metadata */ }
+  }
+}
+```
+
+---
+
+### **9. Update Order Status**
+
+**Event:** `updateOrderStatus`
+
+**Description:** Update the status of an existing order.
+
+**Request:**
+```javascript
+socket.emit('updateOrderStatus', { 
+  orderId: "uuid-of-the-order",
+  status: "ACTIVE",
+  transactionSignature: "optional-transaction-signature" 
+});
+```
+
+**Available Statuses:**
+- `PENDING`: Order created, waiting for execution
+- `ACTIVE`: Order is active and being monitored
+- `EXECUTED`: Order has been executed
+- `CANCELLED`: Order has been cancelled
+- `EXPIRED`: Order has expired
+
+**Response:**
+```javascript
+socket.on('orderStatusUpdated', (response) => {
+  if (response.success) {
+    console.log('Order status updated:', response.data);
+  } else {
+    console.error('Failed to update order status:', response.error);
+  }
+});
+```
+
+**Response Structure:**
+```javascript
+{
+  success: true,
+  data: {
+    orderId: "uuid-here",
+    status: "ACTIVE",
+    updatedAt: "2024-01-15T10:35:00Z"
+  }
+}
+```
+
+---
+
 ## 📋 Data Types
 
 ### **Order Types:**
